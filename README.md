@@ -1,5 +1,5 @@
 **Anant Dhoundiyal** | Roll No. #150096725170
-**Live demo:** https://YOUR-USERNAME.github.io/crazy-app-student-150096725170/
+**Live demo:** https://anantd16.github.io/crazy-app-student-150096725170/
 
 # Neon Particle Sandbox
 
