@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neon Particle Sandbox</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;800&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#07030f; --pink:#ff2bd6; --cyan:#19f0ff; --lime:#b6ff3b; --text:#e9e4ff; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+    font-family: 'Orbitron', ui-monospace, Menlo, Consolas, monospace; }
+  canvas { position: fixed; inset: 0; display: block; cursor: crosshair; }
+  header { position: fixed; top: 0; left: 0; right: 0; padding: 14px 20px; z-index: 2;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: linear-gradient(#07030fee, #07030f00); pointer-events: none; }
+  h1 { font-size: clamp(14px, 2.6vw, 22px); font-weight: 800; letter-spacing: .08em;
+    color: var(--cyan); text-shadow: 0 0 10px var(--cyan), 0 0 28px var(--pink); }
+  .controls { display: flex; gap: 8px; pointer-events: auto; }
+  button { font: 500 12px 'Orbitron', monospace; color: var(--text); background: #14082a;
+    border: 1px solid var(--pink); border-radius: 6px; padding: 9px 14px; cursor: pointer;
+    transition: transform .12s, box-shadow .12s, background .12s; }
+  button:hover { box-shadow: 0 0 14px var(--pink); }
+  button:active { transform: scale(.93); }
+  button:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+  button[aria-pressed="true"] { background: var(--pink); color: #12001a; }
+  #hint { position: fixed; bottom: 16px; left: 0; right: 0; text-align: center; font-size: 12px;
+    color: #9b8fc9; z-index: 2; pointer-events: none; transition: opacity 1s; }
+  body.shake { animation: shake .25s; }
+  @keyframes shake { 25% { transform: translate(-5px, 3px); } 50% { transform: translate(5px, -3px); } 75% { transform: translate(-3px, -2px); } }
+  @media (prefers-reduced-motion: reduce) { body.shake { animation: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Created by Student #<span id="studentNo">150096725170</span></h1>
+  <div class="controls">
+    <button id="glitchBtn" aria-pressed="false">Glitch</button>
+    <button id="soundBtn" aria-pressed="true">Sound on</button>
+    <button id="clearBtn">Clear</button>
+  </div>
+</header>
+<canvas id="c"></canvas>
+<p id="hint">Move to leave a trail. Click for a shockwave. Hold Space for a black hole.</p>
+
+<script>
+// ====== CHANGE THIS to your assigned roll number (01 to 50) ======
+const STUDENT_NO = "150096725170";
+document.getElementById("studentNo").textContent = STUDENT_NO;
+
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+const COLORS = ["#ff2bd6", "#19f0ff", "#b6ff3b", "#ffe14d"];
+let W, H, particles = [], rings = [], glitch = false, soundOn = true, holeOn = false;
+const mouse = { x: 0, y: 0, px: 0, py: 0 };
+
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+addEventListener("resize", resize); resize();
+mouse.x = mouse.px = W / 2; mouse.y = mouse.py = H / 2;
+
+// ---- Pure helper functions (these get unit tests at the bottom) ----
+function clamp(n, lo, hi) { return Math.min(hi, Math.max(lo, Number.isFinite(n) ? n : lo)); }
+function calcBurstSize(speed) { return Math.round(clamp(speed / 4, 1, 12)); }
+
+// ---- Sound: tiny synth built with the browser's Web Audio API ----
+let audio;
+function beep(freq, type = "sawtooth", dur = 0.18) {
+  if (!soundOn) return;
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, audio.currentTime);
+    o.frequency.exponentialRampToValueAtTime(freq / 3, audio.currentTime + dur);
+    g.gain.setValueAtTime(0.08, audio.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + dur);
+    o.connect(g); g.connect(audio.destination); o.start(); o.stop(audio.currentTime + dur);
+  } catch (e) { /* audio blocked: ignore */ }
+}
+
+function burst(x, y, count, power = 1) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2, s = (Math.random() * 4 + 1) * power;
+    particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+      life: 1, decay: 0.008 + Math.random() * 0.02, size: Math.random() * 3 + 1,
+      color: COLORS[(Math.random() * COLORS.length) | 0] });
+  }
+  if (particles.length > 2500) particles.splice(0, particles.length - 2500);
+}
+
+addEventListener("pointermove", e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+canvas.addEventListener("pointerdown", e => {
+  burst(e.clientX, e.clientY, 140, 2.2);
+  rings.push({ x: e.clientX, y: e.clientY, r: 4, a: 1, color: COLORS[(Math.random() * 4) | 0] });
+  beep(220 + Math.random() * 500, glitch ? "square" : "sawtooth");
+  document.body.classList.remove("shake"); void document.body.offsetWidth; document.body.classList.add("shake");
+  document.getElementById("hint").style.opacity = 0;
+});
+addEventListener("keydown", e => { if (e.code === "Space") { holeOn = true; e.preventDefault(); } });
+addEventListener("keyup", e => { if (e.code === "Space") holeOn = false; });
+
+// Think of this loop like a traffic police officer: every single frame (about 60 times a second)
+// the officer waves each particle forward, tells it to slow down, and sends it home when its
+// life runs out. (Replace with the analogy your own AI gives you in Task 3!)
+function frame() {
+  // Semi-transparent fill leaves glowing trails behind moving things
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "rgba(7, 3, 15, 0.22)";
+  ctx.fillRect(0, 0, W, H);
+  ctx.globalCompositeOperation = "lighter";
+
+  const speed = Math.hypot(mouse.x - mouse.px, mouse.y - mouse.py);
+  if (speed > 2) burst(mouse.x, mouse.y, calcBurstSize(speed), 0.8);
+  mouse.px = mouse.x; mouse.py = mouse.y;
+
+  for (const p of particles) {
+    if (holeOn) {
+      const dx = mouse.x - p.x, dy = mouse.y - p.y, d = Math.max(30, Math.hypot(dx, dy));
+      p.vx += (dx / d) * 0.5; p.vy += (dy / d) * 0.5;
+    }
+    p.x += p.vx; p.y += p.vy; p.vx *= 0.985; p.vy *= 0.985; p.life -= p.decay;
+    ctx.globalAlpha = clamp(p.life, 0, 1);
+    ctx.fillStyle = p.color; ctx.shadowColor = p.color; ctx.shadowBlur = 12;
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+  }
+  particles = particles.filter(p => p.life > 0);
+
+  ctx.shadowBlur = 0;
+  for (const r of rings) {
+    r.r += 9; r.a -= 0.025;
+    ctx.globalAlpha = clamp(r.a, 0, 1); ctx.strokeStyle = r.color; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke();
+  }
+  rings = rings.filter(r => r.a > 0);
+  ctx.globalAlpha = 1;
+
+  // Glitch mode: slice a strip of the screen and shift it sideways
+  if (glitch && Math.random() < 0.25) {
+    const y = Math.random() * H, h = 8 + Math.random() * 50, dx = (Math.random() - 0.5) * 60;
+    ctx.globalCompositeOperation = "source-over";
+    ctx.drawImage(canvas, 0, y, W, h, dx, y, W, h);
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---- Buttons ----
+function toggle(btn, on, label) { btn.setAttribute("aria-pressed", on); if (label) btn.textContent = label; }
+document.getElementById("glitchBtn").onclick = e => { glitch = !glitch; toggle(e.currentTarget, glitch); beep(90, "square", 0.3); };
+document.getElementById("soundBtn").onclick = e => { soundOn = !soundOn; toggle(e.currentTarget, soundOn, soundOn ? "Sound on" : "Sound off"); };
+document.getElementById("clearBtn").onclick = () => { particles = []; rings = []; ctx.fillStyle = "#07030f"; ctx.fillRect(0, 0, W, H); };
+
+// ====== Unit tests (check the browser Console: no "Assertion failed" means all pass) ======
+console.assert(calcBurstSize(40) === 10, "normal speed should give a medium burst");
+console.assert(calcBurstSize(0) === 1, "zero speed should still give the minimum burst of 1");
+console.assert(calcBurstSize(-50) === 1 && calcBurstSize(NaN) === 1, "negative or invalid speed should not crash");
+</script>
+</body>
+</html>
